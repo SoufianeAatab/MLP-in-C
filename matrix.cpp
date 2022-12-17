@@ -4,33 +4,35 @@ struct matrix
 {
     i32 Rows;
     i32 Cols;
-    
-    f32* Data;
+
+    f32 *Data;
 };
 
-f32 GenerateRandomNumber() {
+f32 GenerateRandomNumber()
+{
     std::random_device rd{};
     std::mt19937 gen{rd()};
-    std::normal_distribution<> d{0.5,0.5};
-//    return d(gen);
-    return ((f32)rand()/(f32)RAND_MAX);;
+    std::normal_distribution<> d{0.5, 0.5};
+    //    return d(gen);
+    return ((f32)rand() / (f32)RAND_MAX);
+    ;
 }
 
-double uniform_distribution(double low, double high) {
-	double difference = high - low; // The difference between the two
-	int scale = 10000;
-	int scaled_difference = (int)(difference * scale);
-	return low + (1.0 * (rand() % scaled_difference) / scale);
+double uniform_distribution(double low, double high)
+{
+    double difference = high - low; // The difference between the two
+    int scale = 10000;
+    int scaled_difference = (int)(difference * scale);
+    return low + (1.0 * (rand() % scaled_difference) / scale);
 }
 
-
-matrix FromArray(f32* Data, i32 Size)
+matrix FromArray(f32 *Data, i32 Size)
 {
     matrix Result = {};
 
     Result.Cols = 1;
     Result.Rows = Size;
-    Result.Data = (f32*) malloc(sizeof(f32) * Size);
+    Result.Data = (f32 *)malloc(sizeof(f32) * Size);
     memcpy(Result.Data, Data, sizeof(f32) * Size);
 
     return Result;
@@ -43,18 +45,18 @@ matrix Matrix(i32 Rows, i32 Cols)
     Result.Cols = Cols;
 
     i32 Size = Rows * Cols;
-    if(Size < 4)
+    if (Size < 4)
     {
-	Size = 4;
+        Size = 4;
     }
-    Result.Data = (f32*) malloc(sizeof(f32) * Size);
-    for(i32 Row = 0; Row < Result.Rows; ++Row)
+    Result.Data = PushSize_(&MemoryArena, Size * sizeof(f32));
+    for (i32 Row = 0; Row < Result.Rows; ++Row)
     {
-	for(i32 Col = 0; Col < Result.Cols; ++Col)
-	{
-	    Result.Data[Row * Result.Cols + Col] = 0;
-	}
-    }    
+        for (i32 Col = 0; Col < Result.Cols; ++Col)
+        {
+            Result.Data[Row * Result.Cols + Col] = 0;
+        }
+    }
     return Result;
 }
 
@@ -62,21 +64,26 @@ matrix Clone(matrix A)
 {
     matrix Result = Matrix(A.Rows, A.Cols);
 
-    for(i32 Row = 0; Row < Result.Rows; ++Row)
+    for (i32 Row = 0; Row < Result.Rows; ++Row)
     {
-	for(i32 Col = 0; Col < Result.Cols; ++Col)
-	{
-	    Result.Data[Row * Result.Cols + Col] = A.Data[Row * Result.Cols + Col];
-	}
-    }    
+        for (i32 Col = 0; Col < Result.Cols; ++Col)
+        {
+            Result.Data[Row * Result.Cols + Col] = A.Data[Row * Result.Cols + Col];
+        }
+    }
     return Result;
 }
 
-void Map(matrix* A, f32 (*f)(f32))
+void Free(matrix A)
 {
-    for(i32 Row = 0; Row < A->Rows; ++Row)
+    free(A.Data);
+}
+
+void Map(matrix *A, f32 (*f)(f32))
+{
+    for (i32 Row = 0; Row < A->Rows; ++Row)
     {
-        for(i32 Col = 0; Col < A->Cols; ++Col)
+        for (i32 Col = 0; Col < A->Cols; ++Col)
         {
             f32 Nval = f(A->Data[Row * A->Cols + Col]);
             A->Data[Row * A->Cols + Col] = Nval;
@@ -84,17 +91,16 @@ void Map(matrix* A, f32 (*f)(f32))
     }
 }
 
-
 matrix MapStatic(matrix A, f32 (*f)(f32))
 {
     matrix Result = Matrix(A.Rows, A.Cols);
-    for(i32 Row = 0; Row < A.Rows; ++Row)
+    for (i32 Row = 0; Row < A.Rows; ++Row)
     {
-	for(i32 Col = 0; Col < A.Cols; ++Col)
-	{
-	    f32 Nval = f(A.Data[Row * A.Cols + Col]);
-	    Result.Data[Row * Result.Cols + Col] = Nval;
-	}
+        for (i32 Col = 0; Col < A.Cols; ++Col)
+        {
+            f32 Nval = f(A.Data[Row * A.Cols + Col]);
+            Result.Data[Row * Result.Cols + Col] = Nval;
+        }
     }
 
     return Result;
@@ -107,9 +113,9 @@ Randomize(i32 Rows, i32 Cols)
     matrix Result = Matrix(Rows, Cols);
     double min = -1.0 / sqrt(n);
     double max = 1.0 / sqrt(n);
-    for(i32 Row = 0; Row < Result.Rows; ++Row)
+    for (i32 Row = 0; Row < Result.Rows; ++Row)
     {
-        for(i32 Col = 0; Col < Result.Cols; ++Col)
+        for (i32 Col = 0; Col < Result.Cols; ++Col)
         {
             Result.Data[Row * Result.Cols + Col] = uniform_distribution(min, max);
         }
@@ -118,16 +124,15 @@ Randomize(i32 Rows, i32 Cols)
     return Result;
 }
 
-void
-Print(matrix A)
+void Print(matrix A)
 {
-    for(i32 Row = 0; Row < A.Rows; ++Row)
+    for (i32 Row = 0; Row < A.Rows; ++Row)
     {
-        for(i32 Col = 0; Col < A.Cols; ++Col)
+        for (i32 Col = 0; Col < A.Cols; ++Col)
         {
             printf("%f ", A.Data[Row * A.Cols + Col]);
         }
-	printf("\n");
+        printf("\n");
     }
 }
 
@@ -136,9 +141,10 @@ matrix Transpose(matrix A)
     matrix Result = Matrix(A.Cols, A.Rows);
     for (int I = 0; I < A.Rows; ++I)
     {
-	for (int J = 0; J < A.Cols; ++J) {
-	    Result.Data[J * Result.Cols + I] = A.Data[I * A.Cols + J];
-	}
+        for (int J = 0; J < A.Cols; ++J)
+        {
+            Result.Data[J * Result.Cols + I] = A.Data[I * A.Cols + J];
+        }
     }
     return Result;
 }
@@ -148,32 +154,47 @@ operator+(matrix A, matrix B)
 {
     assert(A.Cols == B.Cols && A.Rows == B.Rows);
     matrix Result = Matrix(A.Rows, A.Cols);
-    for(i32 Row = 0; Row < A.Rows; ++Row)
+    for (i32 Row = 0; Row < A.Rows; ++Row)
     {
-        for(i32 Col = 0; Col < A.Cols; ++Col)
+        for (i32 Col = 0; Col < A.Cols; ++Col)
         {
             Result.Data[Row * Result.Cols + Col] =
-            A.Data[Row * A.Cols + Col] +
-            B.Data[Row * B.Cols + Col];
+                A.Data[Row * A.Cols + Col] +
+                B.Data[Row * B.Cols + Col];
         }
     }
 
     return Result;
 }
 
+inline matrix&
+operator-=(matrix& A, matrix B)
+{
+    assert(A.Cols == B.Cols && A.Rows == B.Rows);
+    for (i32 Row = 0; Row < A.Rows; ++Row)
+    {
+        for (i32 Col = 0; Col < A.Cols; ++Col)
+        {
+            A.Data[Row * A.Cols + Col] =
+                A.Data[Row * A.Cols + Col] -
+                B.Data[Row * B.Cols + Col];
+        }
+    }
+    return A;
+}
 
 inline matrix
 operator-(matrix A, matrix B)
 {
     assert(A.Cols == B.Cols && A.Rows == B.Rows);
     matrix Result = Matrix(A.Rows, A.Cols);
-    for(i32 Row = 0; Row < A.Rows; ++Row)
+    for (i32 Row = 0; Row < A.Rows; ++Row)
     {
-        for(i32 Col = 0; Col < A.Cols; ++Col)
+        for (i32 Col = 0; Col < A.Cols; ++Col)
         {
             Result.Data[Row * Result.Cols + Col] =
-            A.Data[Row * A.Cols + Col] -
-            B.Data[Row * B.Cols + Col];
+                A.Data[Row * A.Cols + Col] -
+                B.Data[Row * B.Cols + Col];
         }
     }
 
@@ -184,13 +205,13 @@ inline matrix
 operator-(int a, matrix B)
 {
     matrix Result = Matrix(B.Rows, B.Cols);
-    for(i32 Row = 0; Row < B.Rows; ++Row)
+    for (i32 Row = 0; Row < B.Rows; ++Row)
     {
-        for(i32 Col = 0; Col < B.Cols; ++Col)
+        for (i32 Col = 0; Col < B.Cols; ++Col)
         {
             Result.Data[Row * Result.Cols + Col] =
-            1 -
-            B.Data[Row * B.Cols + Col];
+                1 -
+                B.Data[Row * B.Cols + Col];
         }
     }
 
@@ -202,18 +223,35 @@ Hadamard(matrix A, matrix B)
 {
     assert(A.Cols == B.Cols && A.Rows == B.Rows);
     matrix Result = Matrix(A.Rows, A.Cols);
-    for(i32 Row = 0; Row < A.Rows; ++Row)
+    for (i32 Row = 0; Row < A.Rows; ++Row)
     {
-        for(i32 Col = 0; Col < A.Cols; ++Col)
+        for (i32 Col = 0; Col < A.Cols; ++Col)
         {
             Result.Data[Row * Result.Cols + Col] =
-            A.Data[Row * Result.Cols + Col] *
-            B.Data[Row * Result.Cols + Col];
+                A.Data[Row * Result.Cols + Col] *
+                B.Data[Row * Result.Cols + Col];
         }
     }
 
     return Result;
-    
+}
+
+inline matrix
+Hadamard(f32 lr, matrix A, matrix B, matrix C)
+{
+    assert(A.Cols == B.Cols && A.Rows == B.Rows);
+    matrix Result = Matrix(A.Rows, A.Cols);
+    for (i32 Row = 0; Row < A.Rows; ++Row)
+    {
+        for (i32 Col = 0; Col < A.Cols; ++Col)
+        {
+            Result.Data[Row * Result.Cols + Col] =
+                A.Data[Row * Result.Cols + Col] *
+                B.Data[Row * Result.Cols + Col] * C.Data[Row * Result.Cols + Col] * lr;
+        }
+    }
+
+    return Result;
 }
 
 inline matrix
@@ -221,12 +259,12 @@ operator*(matrix A, matrix B)
 {
     assert(A.Cols == B.Rows);
     matrix Result = Matrix(A.Rows, B.Cols);
-    for(i32 Row = 0; Row < A.Rows; ++Row)
+    for (i32 Row = 0; Row < A.Rows; ++Row)
     {
-        for(i32 Col = 0; Col < B.Cols; ++Col)
+        for (i32 Col = 0; Col < B.Cols; ++Col)
         {
             f32 sum = 0;
-            for(i32 K=0; K < B.Rows; K++)
+            for (i32 K = 0; K < B.Rows; K++)
             {
                 sum += A.Data[Row * A.Cols + K] * B.Data[K * B.Cols + Col];
             }
@@ -237,35 +275,27 @@ operator*(matrix A, matrix B)
     return Result;
 }
 
-inline matrix Scalar(matrix A, f32 Scalar)
+inline matrix& Scalar(matrix& A, f32 Scalar)
 {
-    matrix Result = Matrix(A.Rows, A.Cols);
-    for(i32 Row = 0; Row < A.Rows; ++Row)
+
+    for (i32 Row = 0; Row < A.Rows; ++Row)
     {
-	for(i32 Col = 0; Col < A.Cols; ++Col)
-	{
-	    Result.Data[Row * Result.Cols + Col] = A.Data[Row * A.Cols + Col];
-	}
+        for (i32 Col = 0; Col < A.Cols; ++Col)
+        {
+            A.Data[Row * A.Cols + Col] *= Scalar;
+        }
     }
 
-    for(i32 Row = 0; Row < A.Rows; ++Row)
-    {
-	for(i32 Col = 0; Col < A.Cols; ++Col)
-	{
-	    Result.Data[Row * Result.Cols + Col] *= Scalar;
-	}
-    }
-
-    return Result;
+    return A;
 }
 
 inline matrix
-operator*(f32 A, matrix B)
+operator*(f32 A, matrix& B)
 {
     return Scalar(B, A);
 }
 
-inline void Set(matrix* M, i32 Row, i32 Col, f32 Val)
+inline void Set(matrix *M, i32 Row, i32 Col, f32 Val)
 {
     M->Data[Row * M->Cols + Col] = Val;
 }

@@ -25,6 +25,23 @@ typedef uint32_t bool32;
 #define internal static
 
 #define NUM_E 2.71828
+global_variable u32 used = 0;
+struct memory_arena
+{
+    size_t Used;
+    size_t Size;
+    f32 *Base;
+};
+global_variable memory_arena MemoryArena = {};
+
+#define PushStruct(Arena, Type) (Type *)PushSize_(Arena, sizeof(Type))
+inline f32 *PushSize_(memory_arena *Arena, size_t SizeToReserve)
+{   
+    assert(Arena->Used + (SizeToReserve) <= Arena->Size);
+    f32 *Result = Arena->Base + (Arena->Used);
+    Arena->Used += SizeToReserve;
+    return Result;
+}
 
 #include "matrix.cpp"
 f32 Sigmoid(f32 X)
@@ -47,11 +64,6 @@ matrix Square(matrix Z)
     return MapStatic(Z, Square);
 }
 
-f32 DSigmoid(f32 X)
-{
-    return Sigmoid(X) * (1.0f - Sigmoid(X));
-}
-
 f32 get_next_random()
 {
     float Rando = float(rand())/RAND_MAX;
@@ -59,14 +71,10 @@ f32 get_next_random()
 }
 
 #define INPUT_LAYER_SIZE 1
-#define HIDDEN_LAYER_SIZE 16
-#define HIDDEN_LAYER2_SIZE 16
+#define HIDDEN_LAYER_SIZE 32
+#define HIDDEN_LAYER2_SIZE 32
 #define OUTPUT_LAYER_SIZE 1
 
-
-matrix weight12;
-matrix weight23;
-matrix weight45;
 
 matrix init_weights(u32 in, u32 out)
 {
@@ -111,76 +119,119 @@ void shuffle(f32 *array, size_t n)
     }
 }
 
+struct layer
+{
+    u16 input;
+    u16 output;
+    matrix w;
+    matrix b;
+    bool32 last;
+};
+
+layer Layer(u16 input, u16 output, bool32 last = false)
+{
+    layer Result = {};
+    Result.w = init_weights(input, output);
+    Result.b = init_weights(1, output);
+    Result.last = last;
+    Result.input = input;
+    Result.output = output;
+    return Result;
+}
+
+matrix Forward(matrix Input, layer Layer)
+{
+    return Sigmoid((Layer.w * Input) + Layer.b);
+}
+
+
 #define PI 3.141549
 
 int main(int argc, char** argv)
 {
-
     srand(time(NULL));
-    f32 lr = 0.1;
+    f32 lr = 0.1 ;
+    MemoryArena.Base = (f32 *)malloc(64*1024*sizeof(u8));
+    MemoryArena.Size = 64*1024 * sizeof(u8);
+    MemoryArena.Used = 0;
 
-    weight12 = init_weights(INPUT_LAYER_SIZE, HIDDEN_LAYER_SIZE);
-    weight23 = init_weights(HIDDEN_LAYER_SIZE, HIDDEN_LAYER2_SIZE);
-    weight45 = init_weights(HIDDEN_LAYER_SIZE, OUTPUT_LAYER_SIZE);
-
-    matrix b1 = init_weights(1,HIDDEN_LAYER_SIZE);
-    matrix b2 = init_weights(1,HIDDEN_LAYER2_SIZE);
-    matrix b3 = init_weights(1,OUTPUT_LAYER_SIZE);
-    f32 indices[600];
+    layer InputLayer = Layer(INPUT_LAYER_SIZE, HIDDEN_LAYER_SIZE);
+    layer HiddenLayer = Layer(HIDDEN_LAYER_SIZE, HIDDEN_LAYER2_SIZE);
+    layer HiddenLayer2 = Layer(HIDDEN_LAYER2_SIZE, OUTPUT_LAYER_SIZE, true);
+    f32* indices = PushSize_(&MemoryArena, 600*sizeof(f32));
     for (u32 i=0;i<600;++i) 
     {
-        indices[i] = ((double)rand()/(double)RAND_MAX) * PI;
+        indices[i] = ((double)rand()/(double)RAND_MAX) * 2 *PI;
     }
-    u32 epochs = 2000;
+    u32 epochs = 1000;
+    matrix input = Matrix(1,1);
+    matrix output = Matrix(1,1);
+
+    u32 Used = MemoryArena.Used;
+
+    matrix h = Matrix(HIDDEN_LAYER_SIZE, 1);
+    matrix h1 = Matrix(HIDDEN_LAYER2_SIZE, 1);
+    matrix o = Matrix(OUTPUT_LAYER_SIZE, 1);
+    printf("Memory needed %d:\n", Used);
+    u32 max = 0;
     for(u32 i=0;i<epochs;++i){
         shuffle(indices,600);
         f32 error = 0;
         for(u32 j=0;j<600;++j)
         {
+            MemoryArena.Used = Used;
+
             // forward propagation
-            matrix input = Matrix(1,1);
             Set(&input, 0,0, indices[j]);
-            matrix output = Matrix(1,1);
             Set(&output, 0,0, sin(indices[j]));
-            matrix h = Sigmoid((weight12 * input) + b1);
-            matrix h1 = Sigmoid((weight23 * h) + b2);
-            matrix o = Sigmoid((weight45 * h1) + b3);
+            h = Forward(input, InputLayer);
+            h1 = Forward(h, HiddenLayer);
+            o = Forward(h1, HiddenLayer2);
 
-            // cost
-            matrix l = Square(output - o);
             // backpropagation
-            matrix dlo = Hadamard(Hadamard(o,1-o),o-output);
-            matrix dldw = Hadamard(Hadamard(h1,1-h1), Transpose(weight45) * dlo);
-            matrix dldi = Hadamard(Hadamard(h,1-h), Transpose(weight23) * dldw);
-            // matrix dldw = Hadamard(Hadamard(h,1-h), Transpose(weight23) * dlo) * Transpose(input[indices[j]]);
-            weight45 = weight45 - lr * dlo * Transpose(h1);
-            weight23 = weight23 - lr * dldw * Transpose(h);
-            weight12 = weight12 - lr * dldi * Transpose(input);
-            b1 = b1 - lr * dldi;
-            b2 = b2 - lr * dldw;
-            b3 = b3 - lr * dlo;
+            matrix dlo = Hadamard(lr,o,1-o,o-output);
+            matrix dldw = Hadamard(lr, h1,1-h1, Transpose(HiddenLayer2.w) * dlo);
+            matrix dldi = Hadamard(lr, h,1-h, Transpose(HiddenLayer.w) * dldw);
 
-            l = Square(output - o);
+            HiddenLayer2.w -=  dlo * Transpose(h1);
+            HiddenLayer.w -=  dldw * Transpose(h);
+            InputLayer.w -=  dldi * Transpose(input);
+
+            HiddenLayer2.b -= dlo;
+            HiddenLayer.b -= dldw;
+            InputLayer.b -= dldi;
+
+            matrix l = Square(output - o);
             error+= l.Data[0];
+            max = MemoryArena.Used > max ? MemoryArena.Used : max;
         }
-        printf("error [%d/%d] %f \n", i, epochs, error/600.0f);
+        if(i%50==0) printf("error [%d/%d] %f \n", i, epochs, error/600.0f);
     }
-    // forward propagation
-    matrix input = Matrix(1,1);
-    Set(&input, 0,0, 1.6);
-    matrix h = Sigmoid((weight12 * input) + b1);
-    matrix h1 = Sigmoid((weight23 * h) + b2);
-    matrix o = Sigmoid((weight45 * h1) + b3);
-    printf("----\n");
-    Print(o);
-    printf("----\n");
+    MemoryArena.Used = Used;
 
-    Set(&input, 0,0, 0);
-    h = Sigmoid((weight12 * input) + b1);
-    h1 = Sigmoid((weight23 * h) + b2);
-    o = Sigmoid((weight45 * h1) + b3);
-    printf("----\n");
-    Print(o);
-    printf("----\n");
+    f32 results[600];
+    printf("MAXIMO %d %zd", max, MemoryArena.Used);
+    // forward propagation
+    for (u32 i=0;i<600;++i) 
+    {
+        indices[i] = ((double)rand()/(double)RAND_MAX) * 2*PI;
+        Set(&input, 0,0, indices[i]);
+        h = Forward(input, InputLayer);
+        h1 = Forward(h, HiddenLayer);
+        o = Forward(h1, HiddenLayer2);
+        results[i] = o.Data[0];
+        MemoryArena.Used = Used;
+
+    }
+
+    for (u32 i=0;i<600;++i) 
+    {
+        printf("%f,", indices[i]);
+    }
+    printf("--------------------------------------------------");
+    for (u32 i=0;i<600;++i) 
+    {
+        printf("%f,", results[i]);
+    }
 
 }
