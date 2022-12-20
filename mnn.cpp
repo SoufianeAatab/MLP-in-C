@@ -106,10 +106,6 @@ f32 get_next_random()
     return (float(rand())/RAND_MAX) - 0.5;
 }
 
-#define INPUT_LAYER_SIZE 784
-#define HIDDEN_LAYER_SIZE 6
-#define HIDDEN_LAYER2_SIZE 5
-#define OUTPUT_LAYER_SIZE 5
 
 void init_weights(f32* w, u32 in, u32 out)
 {
@@ -380,47 +376,58 @@ void add_layer(neural_n* n, u32 in_size, u32 out_size, f32 (*activation)(f32) = 
     n->size += 1;
 }
 
-f32* forward(neural_n* n, f32* input){
-
-    forward(input,          n->layers[0].a, n->layers[0].w, n->layers[0].b, n->layers[0].in_size, n->layers[0].out_size, n->layers[0].activation);
-    forward(n->layers[0].a, n->layers[1].a, n->layers[1].w, n->layers[1].b, n->layers[1].in_size, n->layers[1].out_size, n->layers[1].activation);
-    forward(n->layers[1].a, n->layers[2].a, n->layers[2].w, n->layers[2].b, n->layers[2].in_size, n->layers[2].out_size, n->layers[2].activation);
-    return n->layers[2].a;
+f32* forward(neural_n* n, f32* input){    
+    assert(n->size >= 1);
+    forward(input, n->layers[0].a, n->layers[0].w, n->layers[0].b, n->layers[0].in_size, n->layers[0].out_size, n->layers[0].activation);
+    for(u32 i=1;i<n->size;++i) {
+        forward(n->layers[i-1].a, n->layers[i].a, n->layers[i].w, n->layers[i].b, n->layers[i].in_size, n->layers[i].out_size, n->layers[i].activation);
+    }
+    return n->layers[n->size-1].a;
 }
 
-f32 backward(neural_n* n, f32* input, f32* target, f32 lr = 0.001)
+f32 cross_entropy(f32* target, f32* predicted, u32 size)
 {
-    forward(input,          n->layers[0].a, n->layers[0].w, n->layers[0].b, n->layers[0].in_size, n->layers[0].out_size, n->layers[0].activation);
-    forward(n->layers[0].a, n->layers[1].a, n->layers[1].w, n->layers[1].b, n->layers[1].in_size, n->layers[1].out_size, n->layers[1].activation);
-    forward(n->layers[1].a, n->layers[2].a, n->layers[2].w, n->layers[2].b, n->layers[2].in_size, n->layers[2].out_size, n->layers[2].activation);
+    f32 e = 0.0f;
+    for(u32 i=0;i<size;++i){
+        e += -target[i] * log(predicted[i]) - (1 - target[i]) * log(1 - predicted[i]);
+    }
+    return e;
+}
 
-    calc_error(n->layers[2].a, target, n->layers[2].dl, n->layers[2].out_size, n->layers[2].d_activation);
-    backward(n->layers[2].dl, n->layers[1].dl, n->layers[2].w, n->layers[1].a, n->layers[2].in_size, n->layers[2].out_size, n->layers[1].d_activation);
-    backward(n->layers[1].dl, n->layers[0].dl, n->layers[1].w, n->layers[0].a, n->layers[1].in_size, n->layers[1].out_size, n->layers[0].d_activation);
+f32 sme(f32* target, f32* predicted, u32 size)
+{
+    f32 e = 0.0f;
+    for(u32 i=0;i<size;++i){
+        e += Square(target[i] - predicted[i]);    
+    }
+    return e;
+}
+
+f32 backward(neural_n* n, f32* input, f32* target, f32 (*loss)(f32*, f32*, u32),f32 lr = 0.001)
+{
+    assert(n->size >= 1);
+
+    forward(input, n->layers[0].a, n->layers[0].w, n->layers[0].b, n->layers[0].in_size, n->layers[0].out_size, n->layers[0].activation);
+    for(u32 i=1;i<n->size;++i) {
+        forward(n->layers[i-1].a, n->layers[i].a, n->layers[i].w, n->layers[i].b, n->layers[i].in_size, n->layers[i].out_size, n->layers[i].activation);
+    }
+    calc_error(n->layers[n->size-1].a, target, n->layers[n->size-1].dl, n->layers[n->size-1].out_size, n->layers[n->size-1].d_activation);
+
+    for(u32 i=n->size-1;i>0;--i) {
+        backward(n->layers[i].dl, n->layers[i-1].dl, n->layers[i].w, n->layers[i-1].a, n->layers[i].in_size, n->layers[i].out_size, n->layers[i-1].d_activation);
+    }
 
     // UPDATE WEIGHTS
-    for(u32 k=0;k<n->layers[2].out_size;++k)
-    {
-        for(u32 l=0;l<n->layers[2].in_size;++l)
-        {
-            n->layers[2].w[k * n->layers[2].out_size + l] -= lr * n->layers[2].dl[k] * n->layers[1].a[l];
+    for(u32 i=1;i<n->size;++i){   
+        for(u32 k=0;k<n->layers[i].out_size;++k){
+            for(u32 l=0;l<n->layers[i].in_size;++l)  {
+                n->layers[i].w[k * n->layers[i].out_size + l] -= lr * n->layers[i].dl[k] * n->layers[i-1].a[l];
+            }
+            n->layers[i].b[k] -= lr * n->layers[i].dl[k];
         }
-        n->layers[2].b[k] -= lr * n->layers[2].dl[k];
-
     }
 
-    for(u32 k=0;k<n->layers[1].out_size;++k)
-    {
-        for(u32 l=0;l<n->layers[1].in_size;++l)
-        {
-            n->layers[1].w[k * n->layers[1].out_size + l] -= lr * n->layers[1].dl[k] * n->layers[0].a[l];
-        }
-        n->layers[1].b[k] -= lr * n->layers[1].dl[k];
-
-    }
-
-    for(u32 k=0;k<n->layers[0].out_size;++k)
-    {
+    for(u32 k=0;k<n->layers[0].out_size;++k){
         for(u32 l=0;l<n->layers[0].in_size;++l)
         {
             n->layers[0].w[k * n->layers[0].out_size + l] -= lr * n->layers[0].dl[k] * input[l];
@@ -428,15 +435,8 @@ f32 backward(neural_n* n, f32* input, f32* target, f32 lr = 0.001)
 
         n->layers[0].b[k] -= lr * n->layers[0].dl[k];
     }
-    f32 e = 0;
-    for(u32 i=0;i<OUTPUT_LAYER_SIZE;++i){
-        //printf("y_true=-%f * log(y_pred=%f)\n", target[i], n->layers[2].a[i]);
-        e += -target[i] * log(n->layers[2].a[i]) - (1 - target[i]) * log(1 - n->layers[2].a[i]);
-        //printf("e=%f\n",e);
-    }
-    //getchar();
-    //f32 e = Square(target[0] - n->layers[2].a[0]);    
-    return e;
+
+    return loss(target, n->layers[n->size-1].a, n->layers[n->size-1].out_size);
 }
 
 void print_to_python(f32* input, int x)
@@ -450,14 +450,29 @@ void print_to_python(f32* input, int x)
     printf("\n");
 }
 
+void one_hot(f32* target)
+{
+    // for(u32 k=0;k<5;++k) {
+    //     target[k] = (indices[p]/100) == k ? 1.0f : 0.0f;
+    // }
+}
+
+f32* gen_n_random(u32 size)
+{
+    f32* output = PushSize_(&MemoryArena, size);
+    for(u32 i=0;i<size;++i) output[i] = ((double)rand()/(double)RAND_MAX);
+    
+    return output;
+}
+
 #define OLD 0   
 int main(int argc, char** argv)
 {
-    read_digit("data0",0);
-    read_digit("data1",100);
-    read_digit("data2",200);
-    read_digit("data3",300);
-    read_digit("data4",400);
+    // read_digit("data0",0);
+    // read_digit("data1",100);
+    // read_digit("data2",200);
+    // read_digit("data3",300);
+    // read_digit("data4",400);
 
 
     srand(time(NULL));
@@ -490,9 +505,16 @@ int main(int argc, char** argv)
     f32* hidden_errors = PushSize_(&MemoryArena, HIDDEN_LAYER_SIZE);
 #endif
     neural_n n = {};
-    add_layer(&n, INPUT_LAYER_SIZE, HIDDEN_LAYER_SIZE, Sigmoid, D_Sigmoid);
-    add_layer(&n, HIDDEN_LAYER_SIZE, HIDDEN_LAYER2_SIZE, Sigmoid, D_Sigmoid);
-    add_layer(&n, HIDDEN_LAYER2_SIZE, OUTPUT_LAYER_SIZE, Sigmoid, D_Sigmoid);
+    add_layer(&n, 1, 16, Sigmoid, D_Sigmoid);
+    add_layer(&n, 16, 1);
+    // n.layers[0].w[0] = -0.58838314;
+    // n.layers[0].w[1] = -0.8299554;
+    // n.layers[0].b[0] = 0;
+    // n.layers[0].b[1] = 0;
+
+    // n.layers[1].w[0] = 0.1567347;
+    // n.layers[1].w[1] = -0.7883025;
+    // n.layers[1].b[0] = 0;
 
     // print_layer_w(&n, 0);
     // print_layer_output(n, 0);
@@ -501,36 +523,22 @@ int main(int argc, char** argv)
     // print_layer_w(&n, 2);
     // print_layer_output(n, 2);
 
-    // f32* indices = PushSize_(&MemoryArena, 600);
-    // for (u32 i=0;i<600;++i)  {
-    //     indices[i] = ((double)rand()/(double)RAND_MAX);
-    // }
-    i32 indices[500];
-    for (u32 i=0;i<500;++i)  {
-        indices[i] = i;
-    }
-
     //print_to_python(indices, 600);
-    f32* target = PushSize_(&MemoryArena, 5);
-
+    f32* target = PushSize_(&MemoryArena, 1);
+    f32* input = gen_n_random(600);
     u32 Used = MemoryArena.Used;
     printf("Memory needed %d:\n", Used);
-    u32 epochs = 2000;
-    f32 lr = 0.1;
+    u32 epochs = 5;
+    f32 lr = 0.01;
 
     for(u32 i=0;i<epochs;++i){
-
-        shuffle(indices,500);
-        //if(i%100==0) lr *= 0.9;
         f32 error = 0;
-        for(u32 p=0;p<500;++p){
+        //if(i%100==0) lr*=0.5;
+        for(u32 p=0;p<600;++p){
       
             MemoryArena.Used = Used;
-            f32* input = dataset[indices[p]];
-            for(u32 k=0;k<5;++k) target[k] = (indices[p]/100) == k ? 1.0f : 0.0f;
-            //target[0] = sin(indices[p] * 2 * PI);
-
-
+            f32* input = &input[p];
+            target[0] = sin(input[p] * 2.0f * PI);
             #if OLD
                 forward(input, Hidden, w1, b1, INPUT_LAYER_SIZE, HIDDEN_LAYER_SIZE, Sigmoid);
                 forward(Hidden, Hidden1, w2, b2, HIDDEN_LAYER_SIZE, HIDDEN_LAYER2_SIZE, Sigmoid);
@@ -574,7 +582,7 @@ int main(int argc, char** argv)
                 }
                 error += Square(target[0] - Output[0]);
             #else
-                f32 errors = backward(&n, input, target, lr);
+                f32 errors = backward(&n, input, target, sme, lr);
                 error += errors;
             #endif
 
@@ -589,48 +597,50 @@ int main(int argc, char** argv)
         forward(Hidden1, output, w3, b3, HIDDEN_LAYER2_SIZE, OUTPUT_LAYER_SIZE);
     #else
     
-    while(1){
-    int myInt;
-    printf("\nINTRODUCE NUMBER\n");
-    scanf("%d", &myInt);
-    f32* inputs = dataset[myInt*100];
-    for(u32 i=0;i<28;++i)
-    {
-        for(u32 j=0;j<28;++j){
-            if(inputs[i*28+j] > 0.0) printf("#");
-            else printf(".");
-        }
-        printf("\n");
-    }
-    f32* outputs = forward(&n, inputs);
-    int max = 0;
-    int max_i = 0;
-    for (u32 i=0;i<5;++i) {
-        if( outputs[i] > max ){
-            max = outputs[i];
-            max_i = i;
-        }
-        printf("%f, ", outputs[i]); 
-    }
-    printf("\nNN predicted: %d", max_i); 
-    }
+    // while(1){
+    // int myInt;
+    // printf("\nINTRODUCE NUMBER\n");
+    // scanf("%d", &myInt);
+    // f32* inputs = dataset[myInt*100];
+    // for(u32 i=0;i<28;++i)
+    // {
+    //     for(u32 j=0;j<28;++j){
+    //         if(inputs[i*28+j] > 0.0) printf("#");
+    //         else printf(".");
+    //     }
+    //     printf("\n");
+    // }
+    // f32* outputs = forward(&n, inputs);
+    // int max = 0;
+    // int max_i = 0;
+    // for (u32 i=0;i<5;++i) {
+    //     if( outputs[i] > max ){
+    //         max = outputs[i];
+    //         max_i = i;
+    //     }
+    //     printf("%f, ", outputs[i]); 
+    // }
+    // printf("\nNN predicted: %d", max_i); 
+    // }
 
 
 
     #endif
-    // printf("x = [");
-    // for (u32 i=0;i<600;++i) 
-    // {
-    //     printf("%f,", inputs[i] * PI * 2.0f);
-    // }
-    // printf("]");
-    // printf("\n");
-    // printf("y = [");
-    // for (u32 i=0;i<600;++i) 
-    // {
-    //     printf("%f,", outputs[i]);
-    // }
-    // printf("]\n");
+    f32* ins = gen_n_random(600);
+    printf("x = [");
+    for (u32 i=0;i<600;++i) 
+    {
+        printf("%f,", ins[i] * PI * 2.0f);
+    }
+    printf("]");
+    printf("\n");
+    printf("y = [");
+    for (u32 i=0;i<600;++i) 
+    {
+        f32* output = forward(&n, &ins[i]);
+        printf("%f,", output[0]);
+    }
+    printf("]\n");
 
    
 
